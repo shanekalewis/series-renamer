@@ -1,13 +1,20 @@
+"""
+Rename-Series
+
+Tool to facillitate renaming episodes in series (ARM -> Jellyfin)
+"""
 from argparse import ArgumentParser
 from glob import glob
 import json
 import os
+import shutil
 
 def print_example_json():
     example_config = [
         {
             "series_name": "Test Series",
             "season": 1,
+            "epsisode_start": 5,
             "episode_titles": ["Title 1", "Title 2"],
             "extra_titles": [
                 "<title-for-extras>"
@@ -21,38 +28,54 @@ def print_example_json():
         json.dump(example_config, fp, indent=4)
 
 class SeriesSection:
-    videos: dict
+    videos: dict        # Dictionary of source videos mapped to destination video
+    series_name: str    # Name of the series - will be the directory create under the output directory
+    season: int         # Season number - will be the directory created under the series name in the output directory
+    output: str         # Output directory that contains your series directories
 
-    def __init__(self):
+    def __init__(self, series_name, season, output_path):
         self.videos = {}
+        self.series_name = series_name
+        self.season = season
+        self.output = output_path
 
     def retrieve_source_videos(self, source_path):
         source_videos = glob(f"{source_path}/*.mkv")
         source_videos.sort()
         self.videos = {k: "" for k in source_videos}
 
-    def map_titles_to_videos(self, season, episode_titles, extras_titles):
+    def map_titles_to_videos(self, episode_titles, episode_start, extras_titles):
+        dest = f"{self.output}/{self.series_name}/Season {self.season}"
         for i, k in enumerate(self.videos.keys()):
+            ext = k.split(".")[-1]
             if i < len(episode_titles):
-                self.videos[k] = f"S{season:02d}E{i+1:02d} {episode_titles[i]}"
+                self.videos[k] = f"{dest}/S{self.season:02d}E{i + episode_start:02d} {episode_titles[i]}.{ext}"
             else:
-                self.videos[k] = f"{extras_titles[i-len(episode_titles)]}"
+                self.videos[k] = f"{dest}/Extras/{extras_titles[i-len(episode_titles)]}.{ext}"
 
-    def display(self, series_name, season, output):
+    def display(self):
         print("-" * 50)
-        print("Series Name:", series_name)
-        print("Season:", season)
-        print("Output Directory:", f"{output}/{series_name}/Season {season}\n")
+        print("Series Name:", self.series_name)
+        print("Season:", self.season)
+        print("Output Directory:", f"{self.output}/{self.series_name}/Season {self.season}\n")
         print("Episode Remapping")
         for k, v in self.videos.items():
-            print(os.path.basename(k), "->", v)
+            print(os.path.basename(k), "->", os.path.basename(v))
         print("-" * 50)
         print("")
+
+    def transfer(self):
+        dest = f"{self.output}/{self.series_name}/Season {self.season}/Extras"
+        os.makedirs(dest, exist_ok=True)
+        for k, v in self.videos.items():
+            shutil.copy(k, v)
 
 def parse_config(config_path):
     config = {}
     with open(config_path, "r", encoding="utf-8") as fp:
         config = json.load(fp)
+
+    # TODO verification
 
     return config
 
@@ -80,14 +103,17 @@ def main():
 
     config =  parse_config(args.config)
     
-    series_sections = []
-
     for c in config:
-        series_section = SeriesSection()
+        series_section = SeriesSection(c["series_name"], c["season"], c["output"])
         series_section.retrieve_source_videos(c["source_videos"])
-        series_section.map_titles_to_videos(c["season"], c["episode_titles"], c["extra_titles"])
-        series_section.display(c["series_name"], c["season"], c["output"])
-        series_sections.append(series_section)
+        series_section.map_titles_to_videos(c["episode_titles"], c.get("episode_start", 0) + 1, c["extra_titles"])
+        series_section.display()
+        response = input("Is this information correct? ")
+        if response.lower() in ["y", "yes"]:
+            print("Transfering files")
+            series_section.transfer()
+        else:
+            print("Skipping Transfer - please update configuration file")
 
 if __name__ == "__main__":
     main()
