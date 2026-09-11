@@ -27,6 +27,19 @@ def print_example_json():
     with open("example.json", "w", encoding="utf-8") as fp:
         json.dump(example_config, fp, indent=4)
 
+def validate_filename_characters(filename):
+    updated_filename = filename
+
+    forbidden_chars = {
+        "/": "╱"
+    }
+
+    for c in forbidden_chars:
+        if c in updated_filename:
+            updated_filename = updated_filename.replace(c, forbidden_chars[c])
+
+    return updated_filename
+
 class SeriesSection:
     videos: dict        # Dictionary of source videos mapped to destination video
     series_name: str    # Name of the series - will be the directory create under the output directory
@@ -49,14 +62,17 @@ class SeriesSection:
         for i, k in enumerate(self.videos.keys()):
             ext = k.split(".")[-1]
             if i < len(episode_titles):
-                self.videos[k] = f"{dest}/S{self.season:02d}E{i + episode_start:02d} {episode_titles[i]}.{ext}"
+                ep_title = f"S{self.season:02d}E{i + episode_start:02d} {episode_titles[i]}.{ext}"
+                self.videos[k] = f"{dest}/{validate_filename_characters(ep_title)}"
             else:
-                self.videos[k] = f"{dest}/Extras/{extras_titles[i-len(episode_titles)]}.{ext}"
+                ep_title = f"{extras_titles[i-len(episode_titles)]}.{ext}"
+                self.videos[k] = f"{dest}/Extras/{validate_filename_characters(ep_title)}"
 
     def display(self):
         print("-" * 50)
         print("Series Name:", self.series_name)
         print("Season:", self.season)
+        print("Input Directory:", os.path.dirname(list(self.videos.keys())[0]))
         print("Output Directory:", f"{self.output}/{self.series_name}/Season {self.season}\n")
         print("Episode Remapping")
         for k, v in self.videos.items():
