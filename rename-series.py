@@ -9,18 +9,38 @@ import json
 import os
 import shutil
 
+# CONFIG KEYS
+KEY_SERIES = "series_name"
+KEY_SEASON = "season"
+KEY_EPISODE_START = "episode_start"
+KEY_EPISODE_TITLES = "episode_titles"
+KEY_EXTRAS_TITLES = "extra_titles"
+KEY_SOURCE = "source_videos"
+KEY_OUTPUT = "output"
+
+CONFIG_REQUIRED_KEY_TYPES = {
+    KEY_SERIES: str,
+    KEY_SEASON: int,
+    KEY_EPISODE_TITLES: list,
+    KEY_SOURCE: str,
+    KEY_OUTPUT: str,
+}
+
+CONFIG_OPTIONAL_KEY_TYPES = {
+    KEY_EPISODE_START: int,
+    KEY_EXTRAS_TITLES: list,
+}
+
 def print_example_json():
     example_config = [
         {
-            "series_name": "Test Series",
-            "season": 1,
-            "epsisode_start": 5,
-            "episode_titles": ["Title 1", "Title 2"],
-            "extra_titles": [
-                "<title-for-extras>"
-            ],
-            "source_videos": "<path-to-source-videos>",
-            "output": "<path-to-video-library>" 
+            KEY_SERIES: "Test Series",
+            KEY_SEASON: 1,
+            KEY_EPISODE_START: 5,
+            KEY_EPISODE_TITLES: ["Title 1", "Title 2"],
+            KEY_EXTRAS_TITLES: ["<title-for-extras>"],
+            KEY_SOURCE: "<path-to-source-videos>",
+            KEY_OUTPUT: "<path-to-video-library>" 
         }
     ]
 
@@ -86,12 +106,60 @@ class SeriesSection:
         for k, v in self.videos.items():
             shutil.copy(k, v)
 
-def parse_config(config_path):
+def parse_config(config_path, break_on_error=False):
     config = {}
+    error = False
     with open(config_path, "r", encoding="utf-8") as fp:
         config = json.load(fp)
 
-    # TODO verification
+    if isinstance(config, list):
+        if error and break_on_error:
+            return {}
+        # Config version 1.0
+        for idx,entry in enumerate(config):
+            if error and break_on_error:
+                break
+
+            for k,t in CONFIG_REQUIRED_KEY_TYPES.items():
+                if error and break_on_error:
+                    break
+                value = entry.get(k, None)
+                if not value:
+                    print(f"Error parsing entry {idx}! Required key '{k}' not found")
+                    print(json.dumps(entry, indent=4))
+                    error = True
+                    continue
+                if not isinstance(value, t):
+                    print(f"Error parsing entry {idx}! Required key '{k}' expected type '{t}' but got type '{type(value)}'")
+                    print(json.dumps(entry, indent=4))
+                    error = True
+                    continue
+                if t == list and not all([isinstance(v, str) for v in value]):
+                    print(f"Error parsing entry {idx}! Required key '{k}' expected a list of strings")
+                    print(json.dumps(entry, indent=4))
+                    error = True
+
+            if error and break_on_error:
+                return {}
+
+            for k,t in CONFIG_OPTIONAL_KEY_TYPES.items():
+                if error and break_on_error:
+                    break
+                value = entry.get(k, None)
+                if not value:
+                    continue
+                if not isinstance(value, t):
+                    print(f"Error parsing entry {idx}! Optional key '{k}' expected type '{t}' but got type '{type(value)}'")
+                    print(json.dumps(entry, indent=4))
+                    error = True
+                    continue
+                if t == list and not all([isinstance(v, str) for v in value]):
+                    print(f"Error parsing entry {idx}! Optional key '{k}' expected a list of strings")
+                    print(json.dumps(entry, indent=4))
+                    error = True
+
+    if error:
+        return {}
 
     return config
 
@@ -100,6 +168,7 @@ def main():
 
     parser.add_argument("-c", "--config", help="Path to JSON file containing configuration details")
     parser.add_argument("-e", "--example", help="Print example JSON file", action="store_true")
+    parser.add_argument("-b", "--break-on-error", help="Break or end execution on error", action="store_true")
 
     args = parser.parse_args()
 
@@ -117,19 +186,22 @@ def main():
         parser.print_usage()
         return
 
-    config =  parse_config(args.config)
+    config =  parse_config(args.config, args.break_on_error)
+    if not config:
+        print("Error parsing config!")
+        return
     
-    for c in config:
-        series_section = SeriesSection(c["series_name"], c["season"], c["output"])
-        series_section.retrieve_source_videos(c["source_videos"])
-        series_section.map_titles_to_videos(c["episode_titles"], c.get("episode_start", 0) + 1, c["extra_titles"])
-        series_section.display()
-        response = input("Is this information correct? ")
-        if response.lower() in ["y", "yes"]:
-            print("Transfering files")
-            series_section.transfer()
-        else:
-            print("Skipping Transfer - please update configuration file")
+    # for c in config:
+    #     series_section = SeriesSection(c["series_name"], c["season"], c["output"])
+    #     series_section.retrieve_source_videos(c["source_videos"])
+    #     series_section.map_titles_to_videos(c["episode_titles"], c.get("episode_start", 0) + 1, c["extra_titles"])
+    #     series_section.display()
+    #     response = input("Is this information correct? ")
+    #     if response.lower() in ["y", "yes"]:
+    #         print("Transfering files")
+    #         series_section.transfer()
+    #     else:
+    #         print("Skipping Transfer - please update configuration file")
 
 if __name__ == "__main__":
     main()
