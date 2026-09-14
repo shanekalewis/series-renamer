@@ -73,12 +73,24 @@ class SeriesSection:
         self.output = output_path
 
     def retrieve_source_videos(self, source_path):
+        if not os.path.exists(source_path):
+            print(f"Error! Path '{source_path}' not found")
+            return False
         source_videos = glob(f"{source_path}/*.mkv")
         source_videos.sort()
         self.videos = {k: "" for k in source_videos}
+        if len(source_path) == 0:
+            print(f"Warning: no videos (.mkv) found in '{source_path}'")
+        return True
 
     def map_titles_to_videos(self, episode_titles, episode_start, extras_titles):
         dest = f"{self.output}/{self.series_name}/Season {self.season}"
+        if len(self.videos) > len(episode_titles) + len(extras_titles):
+            print(f"Error! Not enough titles provided for {self.series_name} - Season {self.season} - episode start {episode_start}")
+            return False
+        if len(self.videos) != len(episode_titles) + len(extras_titles):
+            print("Warning: number of videos in directory does not match number of given titles.")
+        
         for i, k in enumerate(self.videos.keys()):
             ext = k.split(".")[-1]
             if i < len(episode_titles):
@@ -87,6 +99,7 @@ class SeriesSection:
             else:
                 ep_title = f"{extras_titles[i-len(episode_titles)]}.{ext}"
                 self.videos[k] = f"{dest}/Extras/{validate_filename_characters(ep_title)}"
+        return True
 
     def display(self):
         print("-" * 50)
@@ -191,17 +204,25 @@ def main():
         print("Error parsing config!")
         return
     
-    # for c in config:
-    #     series_section = SeriesSection(c["series_name"], c["season"], c["output"])
-    #     series_section.retrieve_source_videos(c["source_videos"])
-    #     series_section.map_titles_to_videos(c["episode_titles"], c.get("episode_start", 0) + 1, c["extra_titles"])
-    #     series_section.display()
-    #     response = input("Is this information correct? ")
-    #     if response.lower() in ["y", "yes"]:
-    #         print("Transfering files")
-    #         series_section.transfer()
-    #     else:
-    #         print("Skipping Transfer - please update configuration file")
+    for c in config:
+        series_section = SeriesSection(c["series_name"], c["season"], c["output"])
+        ret = series_section.retrieve_source_videos(c["source_videos"])
+        if not ret:
+            if args.break_on_error:
+                break
+            continue
+        ret = series_section.map_titles_to_videos(c["episode_titles"], c.get("episode_start", 0) + 1, c["extra_titles"])
+        if not ret:
+            if args.break_on_error:
+                break
+            continue
+        series_section.display()
+        response = input("Is this information correct? ")
+        if response.lower() in ["y", "yes"]:
+            print("Transfering files")
+            series_section.transfer()
+        else:
+            print("Skipping Transfer - please update configuration file")
 
 if __name__ == "__main__":
     main()
